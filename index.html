@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ViP Enterprise Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --header-height: 80px;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f1f5f9; 
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .card-shadow { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+
+        /* Scrollable Area Fix for Mobile */
+        .table-container { 
+            position: relative;
+            max-height: 60vh; /* Default mobile height */
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch; /* Smooth scroll iOS */
+        }
+
+        @media (min-width: 768px) {
+    .table-container { 
+        max-height: none !important; /* Menghapus batas tinggi di desktop */
+        overflow-y: visible !important; /* Menghilangkan scrollbar internal */
+    }
+}
+
+        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 700; }
+        .filter-btn-active { background-color: #2563eb; color: white; border-color: #2563eb; }
+        
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+
+        /* Prevent body scroll when modal is open */
+        body.modal-open {
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="p-3 md:p-6 pb-20">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+        <h1 class="text-xl md:text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <i class="fas fa-chart-line text-blue-600"></i>
+            ViP Enterprise
+        </h1>
+        <p class="text-slate-500 text-[10px] md:text-sm font-medium uppercase tracking-wider">Dashboard Monitoring Bisnis</p>
+    </div>
+
+    <div class="flex items-center gap-2 md:gap-3">
+    <input type="file" id="shopeeInput" class="hidden" accept=".xlsx">
+    <input type="file" id="pembelianInput" class="hidden" accept=".xlsx" onchange="processPembelianExcel(this.files[0])">
+
+    <div class="relative group">
+        <button class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-2 shadow-md active:scale-95">
+            <i class="fas fa-shopping-bag"></i> 
+            <span class="hidden md:inline">Import Shopee</span>
+            <span class="md:hidden">Shopee</span>
+            <i class="fas fa-chevron-down text-[10px]"></i>
+        </button>
+        
+        <div class="absolute left-0 mt-0 pt-2 w-48 hidden group-hover:block z-50">
+            <div class="bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden">
+                <button onclick="triggerShopeeImport('insertShopeeData')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors border-b border-slate-50">
+                    <i class="fas fa-store mr-2"></i> Akun 1 (Vi Printing)
+                </button>
+                <button onclick="triggerShopeeImport('insertShopeeData2')" class="w-full text-left px-4 py-3 text-xs font-bold text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors">
+                    <i class="fas fa-store mr-2"></i> Akun 2 (Muflih Print)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <button onclick="document.getElementById('pembelianInput').click()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-2 shadow-md active:scale-95">
+        <i class="fas fa-cart-plus"></i> <span class="hidden md:inline">Import Pembelian</span><span class="md:hidden">Beli</span>
+    </button>
+    <button onclick="fetchAllData()" id="refreshBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-md active:scale-95 text-xs md:text-sm text-nowrap">
+        <i class="fas fa-sync-alt"></i> Sinkronisasi
+    </button>
+</div>
+
+            
+</header>
+
+        
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-slate-200 mb-5 bg-white rounded-t-xl px-2 overflow-x-auto no-scrollbar">
+    <button onclick="switchTab('transaksi')" id="tab-transaksi" class="px-4 md:px-6 py-4 text-xs md:text-sm font-medium transition-all tab-active whitespace-nowrap">
+        <i class="fas fa-exchange-alt mr-2"></i>Transaksi
+    </button>
+    <button onclick="switchTab('piutang')" id="tab-piutang" class="px-4 md:px-6 py-4 text-xs md:text-sm font-medium transition-all text-slate-500 whitespace-nowrap">
+        <i class="fas fa-hand-holding-usd mr-2"></i>Piutang
+    </button>
+    <button onclick="switchTab('stok')" id="tab-stok" class="px-4 md:px-6 py-4 text-xs md:text-sm font-medium transition-all text-slate-500 whitespace-nowrap">
+        <i class="fas fa-boxes mr-2"></i>Stok
+    </button>
+    
+    <button onclick="switchTab('kas')" id="tab-kas" class="px-4 md:px-6 py-4 text-xs md:text-sm font-medium transition-all text-slate-500 whitespace-nowrap">
+        <i class="fas fa-cash-register mr-2"></i>Saldo Kas
+    </button>
+    <button onclick="switchTab('labarugi')" id="tab-labarugi" class="px-4 md:px-6 py-4 text-xs md:text-sm font-medium transition-all text-slate-500 whitespace-nowrap">
+        <i class="fas fa-chart-line mr-2"></i>Laba Rugi
+    </button>
+</div>
+        <!-- Dashboard Stats -->
+        <div id="statsGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+           <div class="bg-white p-3 md:p-4 rounded-xl card-shadow border-l-4 border-green-500">
+    <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">Pendapatan</div>
+    <div id="totalMasuk" class="text-xs md:text-lg font-bold text-slate-800 truncate">Rp 0</div>
+    <div class="text-[8px] md:text-[10px] text-slate-500 mt-1 italic">
+        (Omset Penjualan Langsung)
+    </div>
+</div>
+            <div class="bg-white p-3 md:p-4 rounded-xl card-shadow border-l-4 border-red-500">
+                <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">Pengeluaran</div>
+                <div id="totalKeluar" class="text-xs md:text-lg font-bold text-slate-800 truncate">Rp 0</div>
+            </div>
+            <div class="bg-white p-3 md:p-4 rounded-xl md:rounded-2xl card-shadow border-l-4 border-blue-600">
+    <div class="flex items-center justify-between mb-1 md:mb-2">
+        <div class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">Laba Kotor</div>
+        <div class="w-7 h-7 md:w-8 md:h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <i class="fas fa-wallet text-blue-600 text-xs md:text-sm"></i>
+        </div>
+    </div>
+    <div class="text-xs md:text-lg font-bold text-blue-700 truncate" id="totalSaldo">Rp 0</div>
+</div>
+            <div class="bg-white p-3 md:p-4 rounded-xl card-shadow border-l-4 border-orange-500">
+                <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">Sisa Piutang</div>
+                <div id="totalPiutang" class="text-xs md:text-lg font-bold text-slate-800 truncate">Rp 0</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-white p-4 rounded-xl card-shadow mb-5 space-y-4">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+                <div class="relative w-full md:max-w-xs">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Cari data..." 
+                        class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                
+                <div class="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+                    <button onclick="setDateFilter('all')" id="btn-date-all" class="px-3 py-1.5 text-[9px] font-bold border border-slate-200 rounded-lg transition-all filter-btn-active whitespace-nowrap uppercase">Semua</button>
+                    <button onclick="setDateFilter('today')" id="btn-date-today" class="px-3 py-1.5 text-[9px] font-bold border border-slate-200 rounded-lg transition-all hover:bg-slate-50 whitespace-nowrap uppercase">Hari Ini</button>
+                    <button onclick="setDateFilter('month')" id="btn-date-month" class="px-3 py-1.5 text-[9px] font-bold border border-slate-200 rounded-lg transition-all hover:bg-slate-50 whitespace-nowrap uppercase">Bulan Ini</button>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row gap-3 items-center border-t border-slate-50 pt-3">
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Mulai</label>
+                    <input type="date" id="dateStart" onchange="handleDateChange()" class="w-full md:w-auto text-xs border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Sampai</label>
+                    <input type="date" id="dateEnd" onchange="handleDateChange()" class="w-full md:w-auto text-xs border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button onclick="resetDateRange()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase px-2 py-1 tracking-tight">Reset Kalender</button>
+            </div>
+        </div>
+
+        <!-- Table Display Area -->
+        <div class="bg-white rounded-xl card-shadow overflow-hidden border border-slate-100 mb-20">
+            <div id="rowCounter" class="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                Memuat Data...
+            </div>
+            
+            <div class="table-container">
+                <table class="w-full text-left border-collapse" id="mainTable">
+                    <thead class="bg-slate-100 sticky top-0 z-10 border-b border-slate-200 text-[9px] uppercase text-slate-500 tracking-widest font-bold" id="tableHead"></thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100 text-[12px] md:text-[13px]"></tbody>
+                </table>
+                
+                <div id="loadingOverlay" class="p-16 flex flex-col items-center justify-center">
+                    <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-8 w-8 mb-3"></div>
+                    <p class="text-slate-500 text-xs font-medium">Menyinkronkan data...</p>
+                </div>
+            </div>
+
+            <!-- Pagination Fixed at Bottom of Card -->
+            <div class="bg-slate-50 px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+                <div class="text-[10px] text-slate-500 font-bold uppercase">
+                    Hal <span id="currentPageLabel">1</span> / <span id="totalPagesLabel">1</span>
+                </div>
+                <div class="flex gap-2">
+                    <button id="prevBtn" onclick="prevPage()" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-all">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button id="nextBtn" onclick="nextPage()" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-all">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detail -->
+    <div id="detailModal" class="fixed inset-0 z-50 hidden flex items-end md:items-center justify-center p-0 md:p-4 bg-black/60 backdrop-blur-sm">
+        <div id="modalContent" class="bg-white rounded-t-3xl md:rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden transition-all transform translate-y-full md:translate-y-0 md:scale-95 opacity-0">
+            <div class="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <i class="fas fa-info-circle text-blue-500"></i> Detail Transaksi
+                </h3>
+                <button onclick="closeModal()" class="w-10 h-10 flex items-center justify-center bg-slate-200/50 rounded-full text-slate-500 hover:bg-slate-200 transition-all">&times;</button>
+            </div>
+            <div id="modalBody" class="p-6 space-y-5 overflow-y-auto max-h-[70vh]"></div>
+            <div class="px-6 py-4 border-t border-slate-100 bg-white">
+                <button onclick="closeModal()" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-all">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+   <div id="kasPage" class="page-content hidden p-2 md:p-4">
+    <h2 class="text-xl font-bold mb-4 text-slate-800 px-2">Analisis Kas & Penjualan</h2>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-stretch">
+        
+        <div class="lg:col-span-2 flex flex-col gap-4 lg:h-[600px]">
+            <div id="kasContent" class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                </div>
+        </div>
+
+        <div class="bg-white rounded-[2rem] border border-slate-100 shadow-sm flex flex-col lg:h-[600px] overflow-hidden">
+            <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex-none">
+                <div class="flex justify-between items-center mb-1">
+                    <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Barang Terjual</h3>
+                    <i class="fas fa-box-open text-blue-500 text-xs"></i>
+                </div>
+                <div id="summaryBarangTerjual" class="flex gap-2 mt-2"></div>
+            </div>
+            
+            <div id="barangTerjualContent" class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                </div>
+        </div>
+        
+    </div>
+</div>
+
+    <div id="labarugiPage" class="page-content hidden p-4">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <h2 class="text-xl font-bold text-slate-800 text-sm md:text-xl">Laporan Laba Rugi</h2>
+            
+            <div class="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+                <input type="date" id="lrDateStart" onchange="renderLabaRugi()" class="text-[10px] md:text-xs font-medium text-slate-600 focus:outline-none">
+                <span class="text-slate-300">/</span>
+                <input type="date" id="lrDateEnd" onchange="renderLabaRugi()" class="text-[10px] md:text-xs font-medium text-slate-600 focus:outline-none">
+                <button onclick="resetLRFilter()" class="ml-2 text-slate-400 hover:text-red-500">
+                    <i class="fas fa-undo-alt text-[10px]"></i>
+                </button>
+            </div>
+        </div>
+        <div id="labarugiContent" class="bg-white rounded-2xl p-6 card-shadow">
+            </div>
+    </div>
+
+    <script>
+        const URLS = {
+            transaksi: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRvAQXltAVp8lnrXXVVPJr1hYEi8cAJrqz182qT23eaiI8t-MoBrEtE7bAAJqKEyKKTig4hpA9DNuQB/pub?gid=2057149863&single=true&output=csv",
+            piutang: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRvAQXltAVp8lnrXXVVPJr1hYEi8cAJrqz182qT23eaiI8t-MoBrEtE7bAAJqKEyKKTig4hpA9DNuQB/pub?gid=1961183383&single=true&output=csv",
+            stok: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRvAQXltAVp8lnrXXVVPJr1hYEi8cAJrqz182qT23eaiI8t-MoBrEtE7bAAJqKEyKKTig4hpA9DNuQB/pub?gid=1595956432&single=true&output=csv",
+             utang: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRvAQXltAVp8lnrXXVVPJr1hYEi8cAJrqz182qT23eaiI8t-MoBrEtE7bAAJqKEyKKTig4hpA9DNuQB/pub?gid=1508691974&single=true&output=csv"
+        };
+        // 1. Definisikan URL Apps Script di tingkat global (di awal script)
+window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzuQ6eLJUKjAVyfXctmia7_QhHjm8pRlN8va81kABVu0oXRF8kNr7lcJwkvp4yBnXw/exec";
+
+
+        let currentTab = 'transaksi';
+        let db = { transaksi: [], piutang: [], stok: [], utang: [] };
+        let currentPage = 1;
+        const rowsPerPage = 50;
+        let filteredData = [];
+        let dateFilterMode = 'all';
+         let barangTerjualMap = {};
+    let grandTotalOmset = 0;
+    let grandTotalQty = 0;
+ let currentShopeeAction = 'insertShopeeData';
+
+function triggerShopeeImport(action) {
+    currentShopeeAction = action;
+    document.getElementById('shopeeInput').click();
+}
+
+// Hubungkan input file dengan event listener
+document.getElementById('shopeeInput').onchange = function() {
+    if (this.files && this.files[0]) {
+        processShopeeExcel(this.files[0], currentShopeeAction);
+        this.value = ''; 
+    }
+};
+
+async function processShopeeExcel(file, actionTarget) {
+    if (!file) return;
+    const btn = document.querySelector(".bg-orange-500");
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Memproses...';
+    btn.disabled = true;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const worksheet = workbook.Sheets["Income"];
+            if (!worksheet) throw new Error("Sheet 'Income' tidak ditemukan.");
+
+            const rawData = XLSX.utils.sheet_to_json(worksheet, { range: 5 });
+            const shopeeDataToSave = rawData.filter(row => row['No. Pesanan']).map(row => {
+                const parseVal = (v) => typeof v === 'number' ? v : (parseFloat(String(v).replace(/[^\d.-]/g, '')) || 0);
+                return {
+                    tgl_cair: row['Tanggal Dana Dilepaskan'] || '',
+                    no_pesanan: row['No. Pesanan'],
+                    sku: row['Username (Pembeli)'] || '',
+                    omzet_bruto: parseVal(row['Harga Asli Produk']) - Math.abs(parseVal(row['Jumlah Pengembalian Dana ke Pembeli'])) - Math.abs(parseVal(row['Total Diskon Produk'])),
+                    total_potongan: Math.abs(parseVal(row['Biaya Administrasi']) + parseVal(row['Biaya Layanan']) + parseVal(row['Biaya Proses Pesanan'])),
+                    net_income: parseVal(row['Total Penghasilan'])
+                };
+            });
+
+            await fetch(window.SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: actionTarget, data: shopeeDataToSave })
+            });
+
+            const namaAkun = actionTarget === 'insertShopeeData' ? "Akun 1" : "Akun 2";
+            alert(`Berhasil mengimpor data ${namaAkun}!`);
+            if (typeof fetchAllData === "function") fetchAllData();
+        } catch (err) {
+            alert("Error: " + err.message);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+        
+        function formatIDR(val) {
+            const num = parseFloat(val) || 0;
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
+        }
+
+ function switchTab(tab) {
+    // 1. Reset State Global
+    currentTab = tab;
+    currentPage = 1;
+
+    // 2. Definisi elemen utama dashboard
+    const statsGrid = document.getElementById('statsGrid');
+    const filterContainer = document.querySelector('.bg-white.p-4.rounded-xl.card-shadow');
+    const tableContainer = document.querySelector('.bg-white.rounded-xl.card-shadow.overflow-hidden');
+    const mainDashboardElements = [statsGrid, filterContainer, tableContainer];
+
+    // Target elemen filter spesifik berdasarkan kode Anda
+    const dateQuickFilters = document.querySelector('.flex.gap-2.overflow-x-auto'); // Container tombol Semua, Hari Ini, dll
+    const dateInputSection = document.getElementById('dateStart')?.closest('.grid.grid-cols-2'); // Container Input Tanggal
+    const btnResetRange = document.querySelector('button[onclick="resetDateRange()"]')?.parentElement; // Container Reset Kalender
+
+    // 3. Sembunyikan SEMUA halaman laporan khusus (page-content)
+    document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
+
+    // 4. Update Visual Tombol Navigasi Tab Utama
+    document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+        btn.classList.remove('tab-active', 'text-blue-600', 'font-bold');
+        btn.classList.add('text-slate-500');
+    });
+
+    // 5. Logika Percabangan Tampilan
+    if (tab === 'kas' || tab === 'labarugi') {
+        // --- MODE LAPORAN (Saldo Kas & Laba Rugi) ---
+        mainDashboardElements.forEach(el => el?.classList.add('hidden'));
+        const targetPage = document.getElementById(tab + 'Page');
+        if (targetPage) targetPage.classList.remove('hidden');
+
+        if (tab === 'kas') {
+            renderLaporanKas();
+        } else {
+            if(document.getElementById('lrDateStart')) {
+                document.getElementById('lrDateStart').value = document.getElementById('dateStart').value;
+                document.getElementById('lrDateEnd').value = document.getElementById('dateEnd').value;
+            }
+            renderLabaRugi();
+        }
+    } else {
+// --- MODE DATA (Transaksi, Piutang, Stok) ---
+mainDashboardElements.forEach(el => el?.classList.remove('hidden'));
+
+// LOGIKA PEMBERSIHAN FILTER TANGGAL
+if (tab === 'stok' || tab === 'piutang') {
+    if (dateQuickFilters) dateQuickFilters.classList.add('hidden');
+    if (dateInputSection) dateInputSection.classList.add('hidden');
+    if (btnResetRange) btnResetRange.classList.add('hidden');
+    
+    document.getElementById('dateStart').value = "";
+    document.getElementById('dateEnd').value = "";
+} else {
+    if (dateQuickFilters) dateQuickFilters.classList.remove('hidden');
+    if (dateInputSection) dateInputSection.classList.remove('hidden');
+    if (btnResetRange) btnResetRange.classList.remove('hidden');
+}
+
+// MANIPULASI TAMPILAN KARTU STATISTIK (statsGrid)
+if (tab === 'stok') {
+    // Tampilan khusus Stok
+    statsGrid.innerHTML = `
+        <div class="col-span-full bg-white p-6 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-between">
+            <div>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Nilai Aset Stok</p>
+                <h3 id="totalAsetStok" class="text-2xl font-black text-blue-600">Rp 0</h3>
+            </div>
+            <div class="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center text-xl">
+                <i class="fas fa-boxes-stacked"></i>
+            </div>
+        </div>
+    `;
+} else if (tab === 'piutang') {
+    // Kosongkan statsGrid atau sembunyikan jika di tab Piutang
+    statsGrid.innerHTML = ''; 
+    // Atau jika ingin memberikan jarak saja, biarkan string kosong
+} else {
+    // Tampilan Default untuk Transaksi/Semua (4 Kartu)
+    statsGrid.innerHTML = `
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-green-500">
+            <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Pendapatan</p>
+            <h3 id="totalMasuk" class="text-sm font-bold text-slate-800">Rp 0</h3>
+            <div class="text-[8px] text-slate-500 mt-1 italic">(Omset Penjualan Langsung)</div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-red-500">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Pengeluaran</p>
+            <h3 id="totalKeluar" class="text-sm font-bold text-slate-800">Rp 0</h3>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-blue-600">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Laba Kotor</p>
+            <h3 id="totalSaldo" class="text-sm font-bold text-slate-800">Rp 0</h3>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-orange-500">
+            <p class="text-[10px] font-bold text-slate-400 uppercase">Sisa Piutang</p>
+            <h3 id="totalPiutang" class="text-sm font-bold text-slate-800">Rp 0</h3>
+        </div>
+    `;
+}
+
+renderContent();
+    }
+
+    // 6. Tandai Tombol yang Aktif
+    const activeBtn = document.getElementById('tab-' + tab);
+    if (activeBtn) {
+        activeBtn.classList.add('tab-active', 'text-blue-600', 'font-bold');
+        activeBtn.classList.remove('text-slate-500');
+    }
+}
+        
+     async function fetchAllData() {
+    const btn = document.getElementById('refreshBtn');
+    const loader = document.getElementById('loadingOverlay');
+    btn.disabled = true;
+    loader.classList.remove('hidden');
+
+    try {
+        // 1. Ambil data CSV Publik (Transaksi, Piutang, Stok)
+        const results = await Promise.all([
+            fetchCSV(URLS.transaksi),
+            fetchCSV(URLS.piutang),
+            fetchCSV(URLS.stok),
+            fetchCSV(URLS.utang)
+        ]);
+        
+        db.transaksi = results[0];
+        db.piutang = results[1];
+        db.stok = results[2];
+        db.utang = results[3];
+
+        // 2. AMBIL DATA SHOPEE (Akun 1 & Akun 2)
+        // Kita gunakan Promise.all agar pengambilan data Shopee 1 dan 2 berjalan bersamaan (lebih cepat)
+        const [shopeeRes1, shopeeRes2] = await Promise.all([
+            fetch(`${window.SCRIPT_URL}?action=getShopeeData`),
+            fetch(`${window.SCRIPT_URL}?action=getShopeeData2`)
+        ]);
+
+        const shopeeJson1 = await shopeeRes1.json();
+        const shopeeJson2 = await shopeeRes2.json();
+
+        db.shopee_income = shopeeJson1.data || [];
+        db.shopee_income2 = shopeeJson2.data || []; // <--- SEKARANG DATA AKUN 2 TERSIMPAN DI SINI
+
+        setDateFilter('all');
+    } catch (e) {
+        console.error("Gagal mengambil data:", e);
+        // Tetap jalankan render meskipun shopee gagal agar data lain muncul
+        setDateFilter('all'); 
+    } finally {
+        btn.disabled = false;
+        loader.classList.add('hidden');
+    }
+}
+
+        function fetchCSV(url) {
+            return new Promise((resolve, reject) => {
+                Papa.parse(url, {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => resolve(results.data),
+                    error: (err) => reject(err)
+                });
+            });
+        }
+
+    function calculateStats() {
+    const statsGrid = document.getElementById('statsGrid');
+
+    // --- LOGIKA KHUSUS TAB STOK ---
+    if (currentTab === 'stok') {
+        statsGrid.classList.remove('hidden');
+        
+        let totalAsetStok = 0;
+        const query = document.getElementById('searchInput').value.toLowerCase();
+
+        db.stok.forEach(item => {
+            const nama = (item["Nama Barang"] || "").toLowerCase();
+            const pass = nama.includes(query);
+
+            if (pass) {
+                const sisa = parseFloat(item["Sisa Stok"]) || 0;
+                const harga = parseFloat(item["Harga Beli Terbaru"]) || 0;
+                totalAsetStok += (Math.max(0, sisa) * harga);
+            }
+        });
+
+        const elAset = document.getElementById('totalAsetStok');
+        if (elAset) {
+            elAset.innerText = formatIDR(totalAsetStok);
+        }
+        return;
+    } 
+
+    // --- LOGIKA TAB TRANSAKSI / PIUTANG ---
+    statsGrid.classList.remove('hidden');
+            
+    let masuk = 0, keluar = 0, totalRefund = 0;
+    let piutangTotalSemua = 0;
+    
+    let totalTagihanTerfilter = 0;
+    let totalDPTerfilter = 0;
+    
+    const excludedCategories = ["transfer saldo", "saldo awal", "cicilan piutang"];
+    const refundCategory = "pengembalian dana"; 
+
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const start = document.getElementById('dateStart').value;
+    const end = document.getElementById('dateEnd').value;
+
+    // 1. HITUNG TRANSAKSI (DENGAN FILTER)
+    db.transaksi.forEach(r => {
+        let pass = Object.values(r).some(v => String(v).toLowerCase().includes(query));
+        if (pass && (start || end)) {
+            const dateStr = r["Waktu"];
+            if(dateStr) {
+                const itemTime = new Date(dateStr).getTime();
+                if(!isNaN(itemTime)) {
+                    if(start) pass = pass && itemTime >= new Date(start).getTime();
+                    if(end) pass = pass && itemTime <= new Date(end).setHours(23, 59, 59, 999);
+                }
+            }
+        }
+        
+        if (pass) {
+            const category = (r["Kategori"] || "").toLowerCase().trim();
+            const keterangan = (r["Keterangan"] || "").toLowerCase().trim(); // Ambil data keterangan
+            const isExcluded = excludedCategories.some(excluded => category.includes(excluded));
+            
+            // Tambahan Logika: Cek apakah keterangan mengandung "tarik dana shopee"
+            const isShopeeWithdrawal = keterangan.includes("tarik dana shopee1") || keterangan.includes("tarik dana shopee2");
+
+            if (!isExcluded) {
+                const rMasuk = parseFloat(r["Masuk"]) || 0;
+                const rKeluar = parseFloat(r["Keluar"]) || 0;
+
+                if (category.includes(refundCategory)) {
+                    totalRefund += rKeluar;
+                } else {
+                    // Hanya tambahkan ke 'masuk' jika BUKAN penarikan dana shopee
+                    if (!isShopeeWithdrawal) {
+                        masuk += rMasuk;
+                    }
+                    keluar += rKeluar;
+                }
+            }
+        }
+    });
+
+    // 2. HITUNG PIUTANG (DENGAN FILTER)
+    db.piutang.forEach(r => {
+        const sisa = parseFloat(r["Sisa Piutang"]) || 0;
+        const totalTagihan = parseFloat(r["Total Tagihan"]) || 0;
+        const dp = parseFloat(r["DP"]) || 0;
+        const status = (r["Status"] || "").toLowerCase();
+        
+        if (sisa > 0 && status !== 'lunas') {
+            piutangTotalSemua += sisa;
+        }
+
+        let passPiutang = Object.values(r).some(v => String(v).toLowerCase().includes(query));
+        if (passPiutang && (start || end)) {
+            const dateStr = r["Waktu"];
+            if(dateStr) {
+                const itemTime = new Date(dateStr).getTime();
+                if(!isNaN(itemTime)) {
+                    if(start) passPiutang = passPiutang && itemTime >= new Date(start).getTime();
+                    if(end) passPiutang = passPiutang && itemTime <= new Date(end).setHours(23, 59, 59, 999);
+                }
+            }
+        }
+
+        if (passPiutang) {
+            totalTagihanTerfilter += totalTagihan;
+            totalDPTerfilter += dp;
+        }
+    });
+
+    // --- KALKULASI AKHIR ---
+    // Sekarang 'masuk' sudah bersih dari Tarik Dana Shopee sesuai instruksi Anda
+    const pendapatanFinal = (masuk - totalRefund) + (totalTagihanTerfilter - totalDPTerfilter);
+    const labaKotor = masuk - (keluar + totalRefund);
+
+    if (document.getElementById('totalMasuk')) document.getElementById('totalMasuk').innerText = formatIDR(pendapatanFinal);
+    if (document.getElementById('totalKeluar')) document.getElementById('totalKeluar').innerText = formatIDR(keluar); 
+    
+    const saldoEl = document.getElementById('totalSaldo');
+    if (saldoEl) {
+        saldoEl.innerText = formatIDR(labaKotor); 
+        saldoEl.className = labaKotor < 0 
+            ? "text-xs md:text-lg font-bold text-red-600 truncate" 
+            : "text-xs md:text-lg font-bold text-blue-700 truncate";
+    }
+    
+    if (document.getElementById('totalPiutang')) document.getElementById('totalPiutang').innerText = formatIDR(piutangTotalSemua);
+}
+        
+function renderLabaRugi() {
+    const container = document.getElementById('labarugiContent');
+    
+    // 1. Inisialisasi Variabel
+    let pendapatanTunai = 0;
+    let sisaPiutangPeriodeIni = 0;
+  let piutangTerbayarViaShopee = 0;
+    let totalUtangBaru = 0; // Utang belanja baru (pengurang laba)[cite: 1]
+    let bebanOperasional = 0;
+    let pengembalian = 0;
+    
+    // Variabel Khusus Shopee (Akun 1 & 2)
+    let omzetShopee1 = 0;
+    let potonganShopee1 = 0;
+    let omzetShopee2 = 0;
+    let potonganShopee2 = 0;
+
+    // 2. Ambil Filter Tanggal
+    const startInput = document.getElementById('lrDateStart').value;
+    const endInput = document.getElementById('lrDateEnd').value;
+    const startTime = startInput ? new Date(startInput).getTime() : -Infinity;
+    const endTime = endInput ? new Date(endInput).setHours(23, 59, 59, 999) : Infinity;
+
+    // Fungsi Pembantu parsing angka
+    const parseAmount = (val) => {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        return parseFloat(String(val).replace(/[^\d.-]/g, '')) || 0;
+    };
+
+   
+    // 3. HITUNG PIUTANG (Logika Sinkronisasi Shopee)[cite: 1]
+   if (db.piutang) {
+    db.piutang.forEach(p => {
+        const pDate = new Date(p["Waktu"]).getTime();
+        
+        if (!isNaN(pDate) && pDate >= startTime && pDate <= endTime) {
+            const totalTagihan = parseAmount(p["Total Tagihan"]);
+            const dp = parseAmount(p["DP"]);
+            const sisa = totalTagihan - dp;
+            sisaPiutangPeriodeIni += sisa;
+
+// CARI DI DB.TRANSAKSI: Subjek sama, Jumlah = 0, dan Metode = "Shopee"
+const namaPelanggan = (p["Nama Pelanggan"] || "").toUpperCase().trim();
+
+const lunasDiTransaksi = db.transaksi && db.transaksi.find(t => {
+    const subjek = (t["Subjek"] || "").toUpperCase().trim();
+    const jumlah = parseAmount(t["Jumlah"]);
+    // Tambahkan variabel metode (case-insensitive untuk keamanan)
+    const metode = (t["Metode"] || "").toUpperCase().trim();
+
+    return subjek === namaPelanggan && 
+           jumlah === 0 && 
+           metode === "SHOPEE"; // Syarat tambahan
+});
+
+if (lunasDiTransaksi) {
+    // Jika ditemukan transaksi bernilai 0, nama cocok, dan metode adalah Shopee
+    // maka sisa piutang ini dianggap sudah masuk ke data Shopee
+    piutangTerbayarViaShopee += sisa;
+}
+            
+        }
+    });
+}
+    // 4. HITUNG UTANG BARU (Sebagai Pengurang Laba)[cite: 1]
+if (db.utang) {
+        db.utang.forEach(u => {
+            const uDate = new Date(u["Waktu"]).getTime();
+            if (!isNaN(uDate) && uDate >= startTime && uDate <= endTime) {
+                const totalTagihan = parseAmount(u["Total Tagihan"]);
+                const dp = parseAmount(u["DP"]); // Mengambil nilai DP
+                
+                // Menghitung sisa utang yang belum dibayar saat transaksi dibuat
+                totalUtangBaru += (totalTagihan - dp);
+            }
+        });
+    }
+
+    // 5. HITUNG TRANSAKSI (Cash Flow) & PEMBERSIHAN FILTER
+    db.transaksi.forEach(r => {
+        const itemTime = new Date(r["Waktu"]).getTime();
+        if (!isNaN(itemTime) && itemTime >= startTime && itemTime <= endTime) {
+            const cat = (r["Kategori"] || "").toLowerCase().trim();
+            const ket = (r["Keterangan"] || "").toLowerCase().trim();
+
+            // Pengecekan Filter[cite: 1]
+            if (
+                ["transfer saldo", "saldo awal"].some(ex => cat.includes(ex)) || 
+                ket.includes("tarik dana shopee")
+            ) {
+                return; 
+            }
+
+            if (cat.includes("pengembalian dana")) {
+                pengembalian += parseAmount(r["Keluar"]);
+            } else {
+                if (!cat.includes("cicilan piutang")) {
+                    pendapatanTunai += parseAmount(r["Masuk"]);
+                }
+                // Abaikan bayar utang karena beban sudah dihitung dari Total Tagihan Utang Baru[cite: 1]
+                if (!cat.includes("bayar utang")) {
+                    bebanOperasional += parseAmount(r["Keluar"]);
+                }
+            }
+        }
+    });
+
+    // 6. HITUNG DATA SHOPEE (AKUN 1 & 2)
+ const processShopee = (dataArray, target) => {
+        if (dataArray && Array.isArray(dataArray)) {
+            dataArray.forEach(s => {
+                const rawDate = s['Tgl Cair'] || s.tgl_cair; 
+                if (!rawDate) return;
+                const sDate = new Date(String(rawDate).substring(0, 10)).setHours(0,0,0,0);
+                if (sDate >= startTime && sDate <= endTime) {
+                    const bruto = parseAmount(s['Bruto'] || s.omzet_bruto);
+                    const potongan = parseAmount(s['Potongan'] || s.total_potongan);
+                    if (target === 1) { omzetShopee1 += bruto; potonganShopee1 += potongan; }
+                    else { omzetShopee2 += bruto; potonganShopee2 += potongan; }
+                }
+            });
+        }
+    };
+    processShopee(db.shopee_income, 1);
+    processShopee(db.shopee_income2, 2);
+
+  const omzetShopeeFinal = (omzetShopee1 + omzetShopee2) - piutangTerbayarViaShopee;
+  
+    const pendapatanKotorTotal = pendapatanTunai + sisaPiutangPeriodeIni + omzetShopeeFinal;
+    const totalBeban = bebanOperasional + potonganShopee1 + potonganShopee2 + totalUtangBaru + pengembalian;
+    const labaBersih = pendapatanKotorTotal - totalBeban;
+
+
+    // 8. RENDER TAMPILAN
+    container.innerHTML = `
+        <div class="mb-4 text-[10px] font-bold text-blue-600 uppercase tracking-widest">
+            Analisis Periode: ${startInput || 'Semua'} - ${endInput || 'Sekarang'}
+        </div>
+        <div class="space-y-4">
+            <div class="flex justify-between border-b border-slate-100 pb-2">
+                <span class="text-sm text-slate-600">Penjualan Toko (Tunai)</span>
+                <span class="text-sm font-medium text-slate-900">${formatIDR(pendapatanTunai)}</span>
+            </div>
+            <div class="flex justify-between border-b border-slate-100 pb-2">
+                <span class="text-sm text-slate-600">Omset Shopee (Setelah Penyesuaian)</span>
+                <span class="text-sm font-medium text-orange-600">${formatIDR(omzetShopeeFinal)}</span>
+            </div>
+            <div class="p-2 bg-slate-50 rounded text-[10px] text-slate-500">
+                INFO: Mengurangi ${formatIDR(piutangTerbayarViaShopee)} dari Omset Shopee karena terdeteksi sebagai pelunasan piutang (Transaksi Nilai 0).
+            </div>
+            <div class="flex justify-between border-b border-slate-100 pb-2">
+                <span class="text-sm text-slate-600">Piutang Pelanggan</span>
+                <span class="text-sm font-medium text-blue-500">+${formatIDR(sisaPiutangPeriodeIni)}</span>
+            </div>
+            <div class="flex justify-between border-b border-slate-100 pb-3 font-bold bg-slate-50 p-2 rounded-lg mt-2">
+                <span class="text-sm text-slate-700">Total Omzet Kotor</span>
+                <span class="text-sm text-green-600">${formatIDR(pendapatanKotorTotal)}</span>
+            </div>
+
+            <div class="pt-2">
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Beban Operasional Toko</span>
+                    <span>-${formatIDR(bebanOperasional)}</span>
+                </div>
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Admin & Layanan Shopee 1</span>
+                    <span>-${formatIDR(potonganShopee1)}</span>
+                </div>
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Admin & Layanan Shopee 2</span>
+                    <span>-${formatIDR(potonganShopee2)}</span>
+                </div>
+                <!-- Baris Utang Baru -->
+                <div class="flex justify-between text-xs text-amber-700 font-bold mb-1 bg-amber-50 px-1 rounded">
+                    <span>Utang Belanja Barang (Baru)</span>
+                    <span>-${formatIDR(totalUtangBaru)}</span>
+                </div>
+                <div class="flex justify-between text-xs text-red-500 mb-2">
+                    <span>Retur / Pengembalian Dana</span>
+                    <span>-${formatIDR(pengembalian)}</span>
+                </div>
+            </div>
+
+            <div class="mt-6 p-4 rounded-2xl ${labaBersih >= 0 ? 'bg-blue-600 text-white' : 'bg-red-600 text-white'} shadow-lg transition-all">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase opacity-80">Laba / Rugi Bersih</p>
+                        <h3 class="text-2xl font-black">${formatIDR(labaBersih)}</h3>
+                    </div>
+                    <i class="fas ${labaBersih >= 0 ? 'fa-chart-line' : 'fa-chart-bar'} text-3xl opacity-30"></i>
+                </div>
+            </div>
+            
+            <p class="text-[9px] text-center text-slate-400 italic">Laba dikurangi otomatis oleh utang belanja baru & sinkronisasi piutang Shopee[cite: 1].</p>
+        </div>
+    `;
+}
+
+function renderLaporanKas() {
+    const container = document.getElementById('kasContent'); 
+    const barangContainer = document.getElementById('barangTerjualContent');
+    const summaryContainer = document.getElementById('summaryBarangTerjual');
+    
+    let data = { 
+        saldoAwal: 0, penjualanLangsung: 0, cicilanPiutang: 0,
+        pembelian: 0, operasional: 0, bayarUtang: 0,
+        totalShopee: 0, shopeeSummary: { "tarik dana shopee1": 0, "tarik dana shopee2": 0 },
+        cash: 0, rekening: 0, saldo: 0, sisaPiutang: 0, sisaUtang: 0,
+        shopeeBelumTarik1: 0, shopeeBelumTarik2: 0 // Penampung dana yang masih mengendap di Shopee
+    };
+
+    barangTerjualMap = {};
+    grandTotalQty = 0;
+    grandTotalOmset = 0;
+
+    // --- 1. HITUNG DANA SHOPEE BELUM DITARIK ---
+    // Mengambil total Net Income dari database Shopee (jika ada)[cite: 1]
+    const hitungNetIncome = (dbArray) => {
+        if (!dbArray || !Array.isArray(dbArray)) return 0;
+        return dbArray.reduce((acc, curr) => acc + (parseFloat(curr['Net Income'] || curr.net_income) || 0), 0);
+    };
+
+    const totalIncomeS1 = hitungNetIncome(db.shopee_income);
+    const totalIncomeS2 = hitungNetIncome(db.shopee_income2);
+
+    // --- 2. PROCESS TRANSAKSI KAS ---
+    db.transaksi.forEach(row => {
+        const masuk = parseFloat(row["Masuk"]) || 0;
+        const keluar = parseFloat(row["Keluar"]) || 0;
+        const kategori = String(row["Kategori"] || "").toLowerCase().trim();
+        const keterangan = String(row["Keterangan"] || "").toLowerCase().trim();
+        const metode = String(row["Metode"] || "cash").toLowerCase();
+
+        // Logika Barang (Tetap diproses)
+        if (kategori === "penjualan" && row["Detail JSON"]) {
+            try {
+                const items = JSON.parse(row["Detail JSON"]);
+                if (Array.isArray(items)) {
+                    items.forEach(item => {
+                        const namaAsli = item.nama || "Tanpa Nama";
+                        const namaKey = namaAsli.toLowerCase(); 
+                        const qty = parseFloat(item.qty) || 0;
+                        const harga = parseFloat(item.harga) || 0;
+                        const subtotal = qty * harga;
+
+                        if (!barangTerjualMap[namaKey]) {
+                            barangTerjualMap[namaKey] = { tampilan: namaAsli, qty: 0, omset: 0 };
+                        }
+                        barangTerjualMap[namaKey].qty += qty;
+                        barangTerjualMap[namaKey].omset += subtotal;
+                        grandTotalQty += qty;
+                        grandTotalOmset += subtotal;
+                    });
+                }
+            } catch (e) { }
+        }
+
+        // Logika Uang Masuk
+        if (masuk > 0) {
+            if (kategori === "saldo awal") data.saldoAwal += masuk;
+            else if (kategori === "penjualan") {
+                data.penjualanLangsung += masuk;
+                // Jika keterangan mengandung 'tarik dana', pindahkan dari penjualan toko ke total shopee
+                if (keterangan.includes("tarik dana shopee1")) {
+                    data.totalShopee += masuk;
+                    data.shopeeSummary["tarik dana shopee1"] += masuk;
+                    data.penjualanLangsung -= masuk;
+                } else if (keterangan.includes("tarik dana shopee2")) {
+                    data.totalShopee += masuk;
+                    data.shopeeSummary["tarik dana shopee2"] += masuk;
+                    data.penjualanLangsung -= masuk;
+                }
+            } else if (kategori === "cicilan piutang") data.cicilanPiutang += masuk;
+        }
+        
+        // Logika Uang Keluar
+        if (keluar > 0) {
+            if (kategori === "operasional") data.operasional += keluar;
+            else if (kategori === "pembelian") data.pembelian += keluar;
+            else if (kategori === "bayar utang") data.bayarUtang += keluar;
+        }
+
+        const netto = masuk - keluar;
+        if (metode.includes("rek") || metode.includes("bank") || metode.includes("tf")) data.rekening += netto;
+        else data.cash += netto;
+        data.saldo += netto;
+    });
+
+    // Kalkulasi sisa dana Shopee (Income - Yang sudah ditarik ke kas)[cite: 1]
+    data.shopeeBelumTarik1 = Math.max(0, totalIncomeS1 - data.shopeeSummary["tarik dana shopee1"]);
+    data.shopeeBelumTarik2 = Math.max(0, totalIncomeS2 - data.shopeeSummary["tarik dana shopee2"]);
+    
+    // Hitung Piutang & Utang (Pembersihan kolom)
+    db.piutang.forEach(row => { data.sisaPiutang += parseFloat(row["Sisa Piutang"] || 0); });
+    db.utang.forEach(row => { data.sisaUtang += parseFloat(row["Sisa Utang"] || 0); });
+
+    // --- 3. HITUNG ESTIMASI TOTAL ASET ---
+    // Rumus: Saldo Kas Aktif + Piutang + Saldo Shopee - Utang[cite: 1]
+    const totalAset = data.saldo + data.sisaPiutang + (data.shopeeBelumTarik1 + data.shopeeBelumTarik2) - data.sisaUtang;
+
+    const totalPendapatanB = data.penjualanLangsung + data.cicilanPiutang + data.totalShopee;
+    const totalPengeluaranC = data.operasional + data.pembelian + data.bayarUtang;
+
+    // --- 4. RENDER TAMPILAN ---
+    if (summaryContainer) {
+        summaryContainer.innerHTML = `
+            <div class="flex items-center justify-between w-full mb-2">
+                <div class="flex gap-2">
+                    <div class="px-2 py-1 bg-blue-50 border border-blue-100 rounded text-[9px] font-bold text-blue-600">${grandTotalQty} Pcs</div>
+                    <div class="px-2 py-1 bg-emerald-50 border border-emerald-100 rounded text-[9px] font-bold text-emerald-600">${formatIDR(grandTotalOmset)}</div>
+                </div>
+                <button onclick="exportBarangToExcel()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm">
+                    <i class="fas fa-file-excel"></i> EXPORT
+                </button>
+            </div>
+        `;
+    }
+
+    container.innerHTML = `
+        <div class="space-y-3 animate-fade">
+    <!-- Kartu Utama: Total Aset -->
+    <div class="bg-gradient-to-br from-blue-600 to-blue-900 p-5 rounded-[2rem] text-white shadow-xl text-center">
+        <p class="text-[9px] font-bold uppercase opacity-70 mb-0.5 tracking-widest">Estimasi Total Aset Bisnis</p>
+        <h2 class="text-3xl font-black">${formatIDR(totalAset)}</h2>
+        <div class="mt-4 pt-3 border-t border-white/10 grid grid-cols-2 text-[8px] uppercase opacity-60">
+            <div class="border-r border-white/10 italic">Kas + Piutang + Shopee</div>
+            <div class="italic">Dikurangi Utang</div>
+        </div>
+    </div>
+
+    <!-- Detail Saldo Kas Terkini -->
+    <div class="bg-slate-900 p-4 rounded-[1.5rem] text-white grid grid-cols-2 gap-4">
+        <div class="text-center border-r border-white/10">
+            <p class="text-[8px] opacity-50 uppercase font-bold">Tunai (Cash)</p>
+            <p class="text-xs font-bold text-emerald-400">${formatIDR(data.cash)}</p>
+        </div>
+        <div class="text-center">
+            <p class="text-[8px] opacity-50 uppercase font-bold">Rekening (Bank)</p>
+            <p class="text-xs font-bold text-blue-400">${formatIDR(data.rekening)}</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
+        <table class="w-full text-left border-collapse">
+            <tbody class="divide-y divide-slate-50">
+                <!-- SEKSI 1: REFERENSI SALDO -->
+                <tr class="bg-slate-100">
+                    <td class="px-5 py-2 text-[10px] uppercase font-bold text-slate-500">Saldo Awal Periode</td>
+                    <td class="px-4 py-2 text-right text-[11px] font-bold text-slate-700">${formatIDR(data.saldoAwal)}</td>
+                </tr>
+
+                <!-- SEKSI 2: AKTIVITAS KAS (INCOME) -->
+                <tr class="bg-slate-800 text-white">
+                    <td colspan="2" class="px-4 py-2 text-[10px] uppercase font-black italic">Aktivitas Uang Masuk</td>
+                </tr>
+                <tr>
+                    <td class="px-5 py-1.5 text-[11px] text-slate-600">Penjualan Langsung Toko</td>
+                    <td class="px-4 py-1.5 text-right text-[11px] font-bold text-slate-800">${formatIDR(data.penjualanLangsung)}</td>
+                </tr>
+                <tr>
+                    <td class="px-5 py-1.5 text-[11px] text-orange-600 font-bold">Penarikan Shopee (Masuk Kas)</td>
+                    <td class="px-4 py-1.5 text-right text-[11px] font-black text-orange-600">${formatIDR(data.totalShopee)}</td>
+                </tr>
+                <tr>
+                    <td class="px-5 py-1.5 text-[11px] text-slate-600">Cicilan Piutang</td>
+                    <td class="px-4 py-1.5 text-right text-[11px] font-bold text-slate-800">${formatIDR(data.cicilanPiutang)}</td>
+                </tr>
+                <tr class="bg-blue-50 text-blue-700 font-bold">
+                    <td class="px-5 py-2 text-[9px] uppercase text-right tracking-widest">Total Masuk (Periode Ini)</td>
+                    <td class="px-4 py-2 text-right text-xs font-black">${formatIDR(data.penjualanLangsung + data.totalShopee + data.cicilanPiutang)}</td>
+                </tr>
+
+                <!-- SEKSI 3: PENGELUARAN -->
+                <tr class="bg-slate-800 text-white">
+                    <td colspan="2" class="px-4 py-2 text-[10px] uppercase font-black italic">Aktivitas Uang Keluar</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-2 text-xs text-red-600 font-medium italic">Biaya Operasional</td>
+                    <td class="px-4 py-2 text-right text-xs font-bold text-red-600">-${formatIDR(data.operasional)}</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-2 text-xs text-red-600 font-medium italic">Pembelian Stok</td>
+                    <td class="px-4 py-2 text-right text-xs font-bold text-red-600">-${formatIDR(data.pembelian)}</td>
+                </tr>
+                <tr>
+                    <td class="px-6 py-2 text-xs text-red-600 font-medium italic">Bayar Utang</td>
+                    <td class="px-4 py-2 text-right text-xs font-bold text-red-600">-${formatIDR(data.bayarUtang)}</td>
+                </tr>
+                <tr class="bg-red-50 text-red-700 font-bold">
+                    <td class="px-5 py-2 text-[9px] uppercase text-right tracking-widest">Total Pengeluaran</td>
+                    <td class="px-4 py-2 text-right text-xs font-black">${formatIDR(totalPengeluaranC)}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SEKSI 4: STATUS DANA TERTUNDA & HUTANG (PIUTANG) -->
+    <div class="bg-orange-50 border border-orange-100 p-3 rounded-[1.2rem] flex justify-between items-center">
+        <div>
+            <p class="text-[8px] font-black text-orange-400 uppercase tracking-widest">Dana Shopee (Belum Cair)</p>
+            <p class="text-xs font-black text-orange-700">${formatIDR(data.shopeeBelumTarik1 + data.shopeeBelumTarik2)}</p>
+        </div>
+        <div class="text-right">
+            <p class="text-[7px] italic text-orange-400">Aset digital ini belum<br>terhitung di saldo kas</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white p-3 rounded-[1.2rem] border border-slate-100 shadow-sm text-center">
+            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Piutang Pelanggan</p>
+            <p class="text-xs font-black text-blue-600">${formatIDR(data.sisaPiutang)}</p>
+        </div>
+        <div class="bg-white p-3 rounded-[1.2rem] border border-slate-100 shadow-sm text-center">
+            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Hutang Supplier</p>
+            <p class="text-xs font-black text-red-600">${formatIDR(data.sisaUtang)}</p>
+        </div>
+    </div>
+        </div>
+    `;
+
+    // Render Kolom Kanan (Barang Terjual) tetap seperti sebelumnya...
+    const sortedBarang = Object.entries(barangTerjualMap).sort((a, b) => b[1].qty - a[1].qty);
+    if (barangContainer) {
+        if (sortedBarang.length > 0) {
+            barangContainer.innerHTML = `
+                <table class="w-full text-left">
+                    <thead class="sticky top-0 bg-white z-10 shadow-sm border-b border-slate-50">
+                        <tr class="text-[8px] uppercase text-slate-400 font-bold">
+                            <th class="px-4 py-2">Produk</th>
+                            <th class="px-4 py-2 text-right">Qty</th>
+                            <th class="px-4 py-2 text-right">Omset</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${sortedBarang.map(([key, val]) => `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-4 py-3 text-[10px] font-medium text-slate-700 truncate max-w-[110px]">${val.tampilan}</td>
+                                <td class="px-4 py-3 text-right text-xs font-black text-slate-900">${val.qty}</td>
+                                <td class="px-4 py-3 text-right text-[10px] font-bold text-emerald-600">${formatIDR(val.omset)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            barangContainer.innerHTML = `<div class="p-8 text-center text-slate-400 text-[10px] italic">Tidak ada data terjual</div>`;
+        }
+    }
+}
+
+
+
+function exportBarangToExcel() {
+    // 1. Ambil data barangTerjualMap yang sudah diolah
+    // Kita perlu menjalankan ulang logika pengambilan data atau 
+    // pastikan barangTerjualMap bersifat global.
+    
+    // Namun cara termudah adalah mengambil data dari variabel yang sudah di-sort
+    // di dalam renderLaporanKas jika ingin export apa yang tampil di layar.
+    
+    // Membuat baris untuk Excel
+    const rows = [];
+    
+    // Header Kolom
+    rows.push(["Nama Produk", "Qty Terjual", "Total Omset"]);
+
+    // Mengambil data dari tabel yang tampil (menggunakan data dari db yang sudah difilter)
+    // Asumsi: barangTerjualMap tersedia saat fungsi ini dipanggil
+    const sortedBarang = Object.entries(barangTerjualMap).sort((a, b) => b[1].qty - a[1].qty);
+
+    sortedBarang.forEach(([nama, val]) => {
+        rows.push([nama, val.qty, val.omset]);
+    });
+
+    // Tambahkan Total di bawah
+    rows.push([]);
+    rows.push(["GRAND TOTAL", grandTotalQty, grandTotalOmset]);
+
+    // 2. Proses pembuatan Excel
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Barang Terjual");
+
+    // 3. Download File
+    const tanggal = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `Laporan_Barang_Terjual_${tanggal}.xlsx`);
+}
+        
+async function processPembelianExcel(file) {
+    if (!file) return;
+    
+    const btn = document.querySelector("button[onclick*='pembelianInput']");
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Memproses...';
+    btn.disabled = true;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+            // Grouping berdasarkan Keterangan
+            const grouped = rawData.reduce((acc, row) => {
+                const ket = row['Keterangan'];
+                if (!acc[ket]) {
+                    acc[ket] = {
+                        id: "TRX-" + Date.now() + Math.floor(Math.random() * 1000),
+                        waktu: row['Waktu'] || new Date().toISOString().replace('T', ' ').split('.')[0],
+                        tipe: "KELUAR",
+                        kategori: "Pembelian",
+                        metode: row['Metode'] || "Cash",
+                        keterangan: ket,
+                        masuk: 0,
+                        keluar: 0,
+                        subjek: row['Keterangan'].replace('Pembelian dari ', ''), // Ekstrak nama subjek jika ada
+                        diskon: 0,
+                        items: []
+                    };
+                }
+                
+                const harga = parseFloat(row['Harga Produk']) || 0;
+                const qty = parseFloat(row['Qty']) || 0;
+                const totalRow = parseFloat(row['Total Harga Produk']) || (harga * qty);
+
+                acc[ket].keluar += totalRow;
+                acc[ket].items.push({
+                    nama: row['Nama Produk'],
+                    qty: qty,
+                    harga: harga
+                });
+                
+                return acc;
+            }, {});
+
+            const finalData = Object.values(grouped).map(g => ({
+                ...g,
+                detail_json: JSON.stringify(g.items)
+            }));
+
+            if (finalData.length === 0) return alert("Data kosong");
+
+            await fetch(window.SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'insertPembelianData',
+                    data: finalData
+                })
+            });
+
+            alert(`Berhasil mengimpor ${finalData.length} transaksi pembelian.`);
+            if(typeof fetchAllData === 'function') fetchAllData(); 
+        } catch (error) {
+            console.error(error);
+            alert("Gagal: Pastikan header Excel sesuai: Waktu, Keterangan, Nama Produk, Harga Produk, Qty, Total Harga Produk, Metode");
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+        
+// Fungsi Reset jika ingin kembali ke pengaturan awal
+function resetLRFilter() {
+    document.getElementById('lrDateStart').value = document.getElementById('dateStart').value;
+    document.getElementById('lrDateEnd').value = document.getElementById('dateEnd').value;
+    renderLabaRugi();
+}
+        
+        function handleSearch() { currentPage = 1; applyFilter(); }
+
+        function setDateFilter(mode) {
+            dateFilterMode = mode;
+            currentPage = 1;
+            const startInput = document.getElementById('dateStart');
+            const endInput = document.getElementById('dateEnd');
+            const now = new Date();
+
+            const formatDate = (date) => {
+                const d = new Date(date);
+                if (isNaN(d.getTime())) return '';
+                let month = '' + (d.getMonth() + 1);
+                let day = '' + d.getDate();
+                let year = d.getFullYear();
+                if (month.length < 2) month = '0' + month;
+                if (day.length < 2) day = '0' + day;
+                return [year, month, day].join('-');
+            };
+
+            if (mode === 'today') {
+                const todayStr = formatDate(now);
+                startInput.value = todayStr;
+                endInput.value = todayStr;
+            } else if (mode === 'month') {
+                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+                let lastTransDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); 
+                
+                if (db.transaksi && db.transaksi.length > 0) {
+                    const currentMonth = now.getMonth();
+                    const currentYear = now.getFullYear();
+                    const monthDates = db.transaksi
+                        .map(r => new Date(r["Waktu"]))
+                        .filter(d => !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear);
+                    if (monthDates.length > 0) lastTransDate = new Date(Math.max(...monthDates.map(d => d.getTime())));
+                }
+                startInput.value = formatDate(firstDay);
+                endInput.value = formatDate(lastTransDate);
+            } else if (mode === 'all') {
+                if (db.transaksi && db.transaksi.length > 0) {
+                    const dates = db.transaksi.map(r => new Date(r["Waktu"]).getTime()).filter(t => !isNaN(t));
+                    if (dates.length > 0) {
+                        startInput.value = formatDate(new Date(Math.min(...dates)));
+                        endInput.value = formatDate(new Date(Math.max(...dates)));
+                    }
+                }
+            }
+
+            ['all', 'today', 'month'].forEach(m => {
+                document.getElementById(`btn-date-${m}`).classList.toggle('filter-btn-active', m === mode);
+            });
+
+            applyFilter();
+        }
+
+        function handleDateChange() {
+            dateFilterMode = 'custom';
+            ['all', 'today', 'month'].forEach(m => {
+                document.getElementById(`btn-date-${m}`).classList.remove('filter-btn-active');
+            });
+            currentPage = 1;
+            applyFilter();
+        }
+
+        function resetDateRange() { setDateFilter('all'); }
+
+        function applyFilter() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const startVal = document.getElementById('dateStart').value;
+    const endVal = document.getElementById('dateEnd').value;
+
+    let data = db[currentTab] || [];
+    
+    // 1. Filter berdasarkan pencarian kata kunci
+    let result = data.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(query)));
+
+    // 2. Filter khusus Piutang (hanya yang belum lunas)
+    if (currentTab === 'piutang') {
+        result = result.filter(row => (parseFloat(row["Sisa Piutang"]) || 0) > 0);
+    }
+
+    // 3. Filter berdasarkan Tanggal (kecuali tab stok)
+    if (currentTab !== 'stok' && (startVal || endVal)) {
+        result = result.filter(row => {
+            const dateStr = row["Waktu"] || row["Update Terakhir"];
+            if(!dateStr) return true;
+            const itemTime = new Date(dateStr).getTime();
+            if(isNaN(itemTime)) return true;
+            
+            let pass = true;
+            if(startVal) pass = pass && itemTime >= new Date(startVal).getTime();
+            if(endVal) pass = pass && itemTime <= new Date(endVal).setHours(23, 59, 59, 999);
+            return pass;
+        });
+    }
+
+    // --- TAMBAHKAN LOGIKA PENGURUTAN DI SINI ---
+    if (currentTab === 'stok') {
+        const grouped = result.reduce((acc, item) => {
+            const nama = (item["Nama Barang"] || "").trim();
+            if (!acc[nama]) {
+                acc[nama] = { 
+                    ...item, 
+                    "Masuk": 0, 
+                    "Keluar": 0, 
+                    "Sisa Stok": 0,
+                    // Pastikan mengambil harga beli terbaru (Kolom E)
+                    "Harga Beli Terbaru": parseFloat(item["Harga Beli Terbaru"]) || 0 
+                };
+            }
+            acc[nama]["Masuk"] += parseFloat(item["Masuk"]) || 0;
+            acc[nama]["Keluar"] += parseFloat(item["Keluar"]) || 0;
+            acc[nama]["Sisa Stok"] += parseFloat(item["Sisa Stok"]) || 0;
+            return acc;
+        }, {});
+
+        result = Object.values(grouped).sort((a, b) => 
+            a["Nama Barang"].localeCompare(b["Nama Barang"])
+        );
+    }
+    // ------------------------------------------
+
+    filteredData = result;
+    document.getElementById('rowCounter').innerText = `${filteredData.length} DATA DITEMUKAN`;
+    calculateStats(); 
+    updatePagination();
+    renderTableBody();
+}
+
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage) || 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            document.getElementById('currentPageLabel').innerText = currentPage;
+            document.getElementById('totalPagesLabel').innerText = totalPages;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        }
+
+        function renderTableBody() {
+            const body = document.getElementById('tableBody');
+            body.innerHTML = '';
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const paginatedData = filteredData.slice(startIndex, startIndex + rowsPerPage);
+
+            if(paginatedData.length === 0) {
+                body.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-slate-300 italic">Tidak ada data untuk ditampilkan</td></tr>`;
+                return;
+            }
+
+            paginatedData.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition-colors border-b border-slate-50 cursor-pointer active:bg-slate-100";
+                tr.onclick = () => showDetail(row);
+                
+                let html = '';
+                if (currentTab === 'transaksi') {
+                    const m = parseFloat(row["Masuk"]) || 0;
+                    const k = parseFloat(row["Keluar"]) || 0;
+                    const isTransfer = (row["Kategori"] || "").toLowerCase() === "transfer saldo";
+                    
+                    html = `
+                        <td class="px-4 py-3">
+                            <div class="text-[8px] text-slate-400 font-bold mb-0.5 uppercase">${row["Waktu"]}</div>
+                            <div class="font-bold text-slate-800 line-clamp-1">${isTransfer ? '<i class="fas fa-sync text-blue-400 mr-1"></i> ' : ''}${row["Keterangan"]}</div>
+                            <div class="mt-1"><span class="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[8px] font-black uppercase tracking-tighter">${row["Kategori"]}</span></div>
+                        </td>
+                        <td class="px-4 py-3 text-right font-bold ${isTransfer ? 'text-blue-500' : (m > 0 ? 'text-green-600' : 'text-red-600')}">${formatIDR(m > 0 ? m : k)}</td>
+                    `;
+                } else if (currentTab === 'piutang') {
+                    html = `
+                        <td class="px-4 py-3"><div class="font-bold text-slate-800">${row["Nama Pelanggan"]}</div><div class="text-[9px] text-slate-400 uppercase">${row["Waktu"]}</div></td>
+                        <td class="px-4 py-3 text-right text-red-600 font-bold">${formatIDR(row["Sisa Piutang"])}</td>
+                    `;
+                } else if (currentTab === 'stok') {
+    const sisaStok = parseFloat(row["Sisa Stok"]) || 0;
+    const hargaBeli = parseFloat(row["Harga Beli Terbaru"]) || 0;
+    
+    // Logika: Jika sisaStok < 0, maka pengali adalah 0
+    const nilaiStok = Math.max(0, sisaStok) * hargaBeli;
+
+    html = `
+        <td class="px-4 py-3">
+            <div class="font-bold text-slate-800">${row["Nama Barang"]}</div>
+            <div class="text-[9px] text-slate-400 mt-0.5">
+                HB: Rp ${hargaBeli.toLocaleString('id-ID')} | 
+                <span class="text-blue-500 font-bold">Nilai: Rp ${nilaiStok.toLocaleString('id-ID')}</span>
+            </div>
+        </td>
+        <td class="px-4 py-3 text-center">
+            <span class="px-2 py-1 ${sisaStok < 0 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-700'} rounded-lg font-black">
+                ${sisaStok}
+            </span>
+        </td>
+    `;
+}
+                tr.innerHTML = html;
+                body.appendChild(tr);
+            });
+            document.querySelector('.table-container').scrollTop = 0;
+        }
+
+        function renderContent() {
+            const head = document.getElementById('tableHead');
+            if (currentTab === 'transaksi') head.innerHTML = `<tr><th class="px-4 py-3">Transaksi</th><th class="px-4 py-3 text-right">Nominal</th></tr>`;
+            else if (currentTab === 'piutang') head.innerHTML = `<tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3 text-right">Sisa</th></tr>`;
+            else if (currentTab === 'stok') head.innerHTML = `<tr><th class="px-4 py-3">Barang</th><th class="px-4 py-3 text-center">Stok</th></tr>`;
+            applyFilter();
+        }
+
+        function prevPage() { if (currentPage > 1) { currentPage--; updatePagination(); renderTableBody(); } }
+        function nextPage() { if (currentPage < Math.ceil(filteredData.length / rowsPerPage)) { currentPage++; updatePagination(); renderTableBody(); } }
+
+        function showDetail(data) {
+            const modal = document.getElementById('detailModal');
+            const content = document.getElementById('modalContent');
+            const body = document.getElementById('modalBody');
+            document.body.classList.add('modal-open');
+            
+            let html = '';
+            if (currentTab === 'transaksi') {
+                let itemsHtml = '<p class="text-slate-400 italic text-[11px]">Tidak ada rincian produk</p>';
+                if (data["Detail JSON"]) {
+                    try {
+                        const items = JSON.parse(data["Detail JSON"]);
+                        if (Array.isArray(items)) {
+                            itemsHtml = `<div class="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
+                                <table class="w-full text-[11px]">
+                                    <thead class="bg-slate-100/50 text-slate-500 font-bold uppercase text-[8px]"><tr><th class="p-3 text-left">Item</th><th class="p-3 text-center">Qty</th><th class="p-3 text-right">Harga</th></tr></thead>
+                                    <tbody class="divide-y divide-slate-100">${items.map(i => `<tr><td class="p-3 font-medium text-slate-700">${i.nama || '-'}</td><td class="p-3 text-center font-bold">${i.qty || 1}</td><td class="p-3 text-right font-black text-slate-900">${formatIDR(i.harga)}</td></tr>`).join('')}</tbody>
+                                </table>
+                            </div>`;
+                        }
+                    } catch(e) {}
+                }
+                html = `
+                    <div class="space-y-6">
+                        <div class="text-center pb-6 border-b border-slate-100">
+                            <div class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-1">Total Nominal</div>
+                            <div class="text-3xl font-black ${(data["Kategori"]||"").toLowerCase()==='transfer saldo' ? 'text-blue-600' : (data["Tipe"]==='MASUK'?'text-green-600':'text-red-600')}">${formatIDR(parseFloat(data["Masuk"]) || parseFloat(data["Keluar"]))}</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div><label class="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Waktu</label><p class="text-xs font-bold text-slate-800">${data["Waktu"]}</p></div>
+                            <div><label class="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Kategori</label><p class="text-xs font-bold text-slate-800 uppercase">${data["Kategori"]}</p></div>
+                        </div>
+                        <div><label class="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Keterangan</label><p class="text-xs text-slate-600 font-medium leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">${data["Keterangan"]}</p></div>
+                        <div><label class="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Rincian Pembelian</label>${itemsHtml}</div>
+                    </div>
+                `;
+            } else if (currentTab === 'piutang') {
+                html = `
+                    <div class="space-y-6 text-center">
+                        <div><div class="text-[9px] text-slate-400 font-bold uppercase mb-1">Tagihan Belum Lunas</div><div class="text-3xl font-black text-red-600">${formatIDR(data["Sisa Piutang"])}</div></div>
+                        <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-left space-y-3">
+                            <div class="flex justify-between text-xs"><span class="text-slate-400 font-bold uppercase text-[9px]">Nama Pelanggan</span><span class="font-bold text-slate-800">${data["Nama Pelanggan"]}</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400 font-bold uppercase text-[9px]">Total Invoice</span><span class="font-bold text-slate-800">${formatIDR(data["Total Tagihan"])}</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400 font-bold uppercase text-[9px]">Telah Dibayar</span><span class="font-bold text-green-600">${formatIDR(data["DP"])}</span></div>
+                        </div>
+                    </div>
+                `;
+            } else if (currentTab === 'stok') {
+    const sisaStok = parseFloat(data["Sisa Stok"]) || 0;
+    const hargaBeli = parseFloat(data["Harga Beli Terbaru"]) || 0;
+    
+    // Perhitungan nilai stok dengan proteksi angka 0
+    const nilaiStok = Math.max(0, sisaStok) * hargaBeli;
+
+    html = `
+        <div class="space-y-6 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl text-2xl mb-2"><i class="fas fa-box"></i></div>
+            <h4 class="text-xl font-black text-slate-800 px-4">${data["Nama Barang"]}</h4>
+            
+            <div class="grid grid-cols-2 gap-3 px-4">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <div class="text-[8px] text-slate-400 font-bold uppercase mb-1">Harga Beli Terbaru</div>
+                    <div class="text-xs font-bold text-slate-700">Rp ${hargaBeli.toLocaleString('id-ID')}</div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                    <div class="text-[8px] text-blue-400 font-bold uppercase mb-1">Total Nilai Stok</div>
+                    <div class="text-xs font-bold text-blue-700">Rp ${nilaiStok.toLocaleString('id-ID')} ${sisaStok < 0 ? '(Stok Habis)' : ''}</div>
+                </div>
+            </div>
+            </div>
+    `;
+}
+            body.innerHTML = html;
+            modal.classList.remove('hidden');
+            setTimeout(() => { content.classList.remove('translate-y-full', 'scale-95', 'opacity-0'); }, 10);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('detailModal');
+            const content = document.getElementById('modalContent');
+            document.body.classList.remove('modal-open');
+            content.classList.add('translate-y-full', 'scale-95', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 250);
+        }
+
+        window.onclick = function(e) { if (e.target == document.getElementById('detailModal')) closeModal(); }
+        window.onload = fetchAllData;
+    </script>
+</body>
+</html>
